@@ -241,6 +241,9 @@ code, pre {
     background-color: #4ADE80 !important;
     color: #000000 !important;
 }
+.stButton > button:hover * {
+    color: #000000 !important;
+}
 .stButton > button:disabled {
     opacity: 0.35 !important;
     cursor: not-allowed !important;
@@ -253,7 +256,10 @@ code, pre {
 }
 .approve-btn > button:hover {
     background-color: #4ADE80 !important;
-    color: #000 !important;
+    color: #000000 !important;
+}
+.approve-btn > button:hover * {
+    color: #000000 !important;
 }
 
 /* ── Reject button override ──────────────────────────────── */
@@ -263,7 +269,10 @@ code, pre {
 }
 .reject-btn > button:hover {
     background-color: #ef4444 !important;
-    color: #fff !important;
+    color: #ffffff !important;
+}
+.reject-btn > button:hover * {
+    color: #ffffff !important;
 }
 
 /* ── Tables (audit log) ──────────────────────────────────── */
