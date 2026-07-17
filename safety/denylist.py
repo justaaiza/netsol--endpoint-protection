@@ -22,9 +22,9 @@ from typing import Optional
 _DENYLIST: list[tuple[str, str]] = [
     # Destructive file/disk operations
     (r"\bRemove-Item\b",            "Deletes files or registry keys (Remove-Item)"),
-    (r"\bri\s",                     "Alias for Remove-Item (ri)"),
+    (r"\bri\b",                     "Alias for Remove-Item (ri)"),
     (r"\bdel\b",                    "Deletes files (del)"),
-    (r"\brd\s",                     "Removes directories (rd)"),
+    (r"\brd\b",                     "Removes directories (rd)"),
     (r"\brmdir\b",                  "Removes directories (rmdir)"),
     (r"\brm\s+-rf\b",               "Force-deletes files recursively (rm -rf)"),
     (r"\bFormat-Volume\b",          "Formats a disk volume"),

@@ -7,8 +7,10 @@ Design decisions:
 - The prompt explicitly instructs the model to produce a SINGLE PowerShell command
   (not a script block with multiple lines) to keep the safety denylist validation
   deterministic and the UI display clean.
-- We ask for verification_method as a separate field so the UI can display it and
-  the app can optionally use it as the verify step.
+- verification_method must be a read-only, executable one-liner: stage_verify() in app.py
+  runs it (after passing it through the same safety denylist as remediation_command) as a
+  deterministic cross-check alongside the LLM re-analysis, and the UI displays its raw output
+  next to the VERIFIED/NOT VERIFIED badge.
 - The system prompt includes a "safety contract" section instructing the LLM NOT to
   propose dangerous commands — this is defense-in-depth alongside the denylist.
 """
@@ -29,8 +31,10 @@ _REMEDIATION_SCHEMA = {
         "string — what could change or break as a side effect of applying this fix"
     ),
     "verification_method": (
-        "string — the PowerShell command or expected output value that confirms "
-        "the fix was applied successfully"
+        "string — a single-line, READ-ONLY PowerShell command (a Get-*/query cmdlet "
+        "or equivalent, no state changes) that queries the current value/state "
+        "relevant to this fix and prints it, so the result can be executed "
+        "automatically and its output compared to confirm the fix was applied"
     ),
 }
 
@@ -75,7 +79,10 @@ Rules:
 - Do NOT include markdown, code fences, or any text outside the JSON object
 - explanation should be 2-3 sentences, technical but readable by a security analyst
 - possible_impact should be honest — if there is no impact, say "Minimal impact expected."
-- verification_method should be a concrete command or expected value, not vague instructions"""
+- verification_method MUST be a single-line, READ-ONLY PowerShell command (e.g. a Get-*
+  cmdlet, auditpol /get, net accounts) that prints the current value/state relevant to this
+  fix. It will be executed automatically after the fix to confirm success, so it must never
+  modify system state — only query and print it. Do not use vague descriptions here."""
 
     user_message = f"""Propose a remediation for the following vulnerability:
 

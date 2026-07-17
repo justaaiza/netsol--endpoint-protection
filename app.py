@@ -487,6 +487,20 @@ def stage_execute(param: dict) -> None:
         return
 
     cmd = remediation.get("remediation_command", "")
+
+    if not is_elevated():
+        error_msg = (
+            "Execution blocked: this process is not running with Administrator "
+            "privileges. Restart PowerShell/Streamlit as Administrator and retry."
+        )
+        pstate["status"] = "error"
+        pstate["error"] = error_msg
+        pstate["execution"] = {
+            "stdout": "", "stderr": "", "returncode": -1, "error": error_msg,
+        }
+        log_event(pid, "execute", "blocked", {"command": cmd, "reason": error_msg})
+        return
+
     log_event(pid, "execute", "started", {"command": cmd})
 
     exec_result = run_powershell(cmd)
@@ -506,10 +520,18 @@ def stage_execute(param: dict) -> None:
 
 
 def stage_verify(param: dict) -> None:
-    """Re-run the inspector and compare against the analysis to confirm the fix."""
+    """Re-run the inspector and compare against the analysis to confirm the fix.
+
+    Combines the existing LLM re-analysis (authoritative "verified" signal, kept
+    fully dynamic per the project's no-hardcoded-logic requirement) with a new
+    deterministic cross-check: the LLM-authored `verification_method` command from
+    the remediation stage is executed (after passing the same mandatory safety
+    denylist as the remediation command itself) and its raw output is surfaced to
+    the operator alongside the LLM's verdict, for visual cross-reference.
+    """
     pid = param["id"]
     pstate = st.session_state.param_states[pid]
-    prev_analysis = pstate.get("analysis")
+    remediation = pstate.get("remediation")
 
     # Re-inspect
     try:
@@ -534,11 +556,39 @@ def stage_verify(param: dict) -> None:
     still_vulnerable = new_analysis.get("is_vulnerable", True)
     verified = not still_vulnerable
 
+    # --- Deterministic cross-check: execute the LLM's own verification_method ---
+    deterministic_check = None
+    verify_cmd = (remediation or {}).get("verification_method", "").strip()
+    if verify_cmd:
+        passed, deny_reason = validate_command(verify_cmd)
+        if not passed:
+            deterministic_check = {"skipped": True, "reason": deny_reason}
+            log_event(pid, "deterministic_verify", "blocked", {
+                "command": verify_cmd, "reason": deny_reason,
+            })
+        else:
+            result = run_powershell(verify_cmd)
+            deterministic_check = {
+                "skipped": False,
+                "command": verify_cmd,
+                "stdout": result.get("stdout", "")[:500],
+                "stderr": result.get("stderr", "")[:500],
+                "returncode": result.get("returncode"),
+                "error": result.get("error"),
+            }
+            log_event(pid, "deterministic_verify", "executed", {
+                "command": verify_cmd,
+                "returncode": result.get("returncode"),
+                "stdout": result.get("stdout", "")[:500],
+                "error": result.get("error"),
+            })
+
     pstate["verification"] = {
         "verified": verified,
         "reason": new_analysis.get("current_state", ""),
         "new_inspection": new_data,
         "new_analysis": new_analysis,
+        "deterministic_check": deterministic_check,
     }
 
     if verified:
@@ -807,6 +857,26 @@ def render_parameter_panel(param: dict):
         reason = verification.get("reason", "")
         if reason:
             st.caption(f"Re-check: {reason}")
+
+        det_check = verification.get("deterministic_check")
+        if det_check:
+            with st.expander("🔬 Deterministic Cross-Check", expanded=False):
+                if det_check.get("skipped"):
+                    st.warning(
+                        f"Skipped — verification_method blocked by safety denylist: "
+                        f"{det_check.get('reason')}"
+                    )
+                else:
+                    st.markdown("**Command:**")
+                    st.code(det_check.get("command", ""), language="powershell")
+                    if det_check.get("stdout"):
+                        st.markdown("**Output:**")
+                        st.code(det_check["stdout"], language="text")
+                    if det_check.get("stderr"):
+                        st.markdown("**stderr:**")
+                        st.code(det_check["stderr"], language="text")
+                    if det_check.get("error"):
+                        st.error(f"Subprocess error: {det_check['error']}")
 
 
 # ---------------------------------------------------------------------------
